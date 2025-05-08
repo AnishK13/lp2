@@ -25,11 +25,7 @@ void solve(int col, int n, vector<string> &board, vector<vector<string>> &ans,
 
 
 int main(){
-  int choice=1;
-  while(choice==1){
-    int n;
-    cout<<"Enter the value of n: ";
-    cin>>n;
+    int n=4;
     vector<vector<string>>ans;
     string s(n,'.');
     vector<string>board(n,s);
@@ -42,8 +38,5 @@ int main(){
       }
       cout<<endl;
     }
-    cout<<"Enter choice(0/1): ";
-    cin>>choice;
-  }
   
 }
