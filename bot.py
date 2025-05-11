@@ -1,71 +1,88 @@
-from sentence_transformers import SentenceTransformer, util
-import torch
-import streamlit as st
+import gradio as gr
+from nltk.chat.util import Chat, reflections
 
-@st.cache_resource
-def load_model():
-    return SentenceTransformer('paraphrase-MiniLM-L6-v2')
-
-model = load_model()
-
-faq_pairs = {
-    "What is your name?": "I'm a customer support assistant.",
-    "Do you offer refunds?": "Yes, we offer refunds within 30 days of purchase.",
-    "Tell me about the product.": "Can you specify which product you're interested in?",
-    "What is the price of the product?": "Please mention the product name for pricing details.",
-    "Hello": "Hi there! How can I assist you today?",
-    "Thank you": "You're welcome!",
-    "Bye": "Goodbye! Have a great day.",
-    "How can I track my order?": "You can track your order using the tracking link sent to your email after purchase.",
-    "Can I cancel my order?": "Yes, you can cancel your order within 24 hours of placing it.",
-    "What payment methods do you accept?": "We accept credit/debit cards, UPI, PayPal, and net banking.",
-    "Do you ship internationally?": "Yes, we offer international shipping to most countries.",
-    "How long does delivery take?": "Delivery typically takes 3-7 business days depending on your location.",
-    "Is there any warranty on the product?": "Yes, our products come with a 1-year warranty.",
-    "I forgot my password.": "You can reset your password using the 'Forgot Password' link on the login page.",
-    "Can I change my shipping address?": "Yes, please contact support within 12 hours of placing the order to change your address.",
-    "samsung": "Samsung offers Galaxy S, A, and M series smartphones. Notable models include Galaxy S23 Ultra, Galaxy A54, and M14.",
-    "iphone": "Apple's iPhone lineup includes iPhone 15, 15 Plus, 15 Pro, and 15 Pro Max with iOS and powerful A17 chips.",
-    "oneplus": "OnePlus phones include OnePlus 11, OnePlus Nord 3, and OnePlus CE 3 with OxygenOS and fast performance.",
-    "pixel": "Google Pixel phones like Pixel 8 and Pixel 8 Pro offer clean Android and superior camera quality.",
-    "xiaomi": "Xiaomi provides budget and flagship phones like Redmi Note 13 Pro, Xiaomi 13 Pro, and POCO X5 Pro.",
-    "realme": "Realme devices include Realme Narzo 60, Realme 11 Pro, and GT Neo series with strong specs and pricing.",
-    "oppo": "OPPO offers Reno series and F-series phones. Popular models include Reno 10 Pro and OPPO F23.",
-    "vivo": "Vivo has V-series and T-series phones. Models include Vivo V27 Pro, T2 5G, and Vivo X90.",
-    "motorola": "Motorola phones include Moto G84, Edge 40, and Razr foldables with near-stock Android.",
-    "nothing": "Nothing’s lineup includes Nothing Phone (1) and Phone (2), known for unique design and clean UI."
+books = {
+    'fiction': ["The Alchemist", "1984", "The Great Gatsby"],
+    'non-fiction': ["Sapiens", "Atomic Habits", "Educated"],
+    'academic': ["Engineering Mathematics", "Human Anatomy", "Principles of Management"]
 }
 
-questions = list(faq_pairs.keys())
-question_embeddings = model.encode(questions, convert_to_tensor=True)
+patterns = [
+    (r'hi|hello|hey', [
+        'Hello! Welcome to BookWorld 📚. How can I assist you today?',
+        'Hey there! Need help with books or orders?',
+        'Hi! Looking for something to read?']),
+    (r'how are you', [
+        "I'm just a bot, but I'm here to help you find the perfect book!"]),
+    (r'(.*)book(.*)', [
+        'We have fiction, non-fiction, and academic books. What are you looking for?']),
+    (r'(.*)fiction(.*)', [
+        f"Our fiction section includes: {', '.join(books['fiction'])}. Would you like to buy one?"]),
+    (r'(.*)non[- ]fiction(.*)', [
+        f"Our non-fiction books include: {', '.join(books['non-fiction'])}. Would you like to buy one?"]),
+    (r'(.*)academic(.*)', [
+        f"Our academic books include: {', '.join(books['academic'])}. Interested in purchasing?"]),
+    (r'(.*)price(.*)|(.*)cost(.*)', [
+        'Most books range from ₹200 to ₹1500 depending on the category and author.']),
+    (r'(.*)buy(.*)|(.*)order(.*)', [
+        "Great! Let’s proceed with your order. Type 'start order' to begin."]),
+    (r'(.*)help(.*)', [
+        'I can assist you with book categories, prices, and placing orders.']),
+    (r'(.*)contact(.*)', [
+        'You can email us at support@bookworld.com or call 1800-BOOK-123.']),
+    (r'(.*)bye|goodbye|exit', [
+        'Thank you for visiting BookWorld! 📖 Goodbye!']),
+    (r'(yes|yeah|yep)', [
+        "Great! Let's proceed with your order. Type 'start order' to begin."]),
+]
 
-def get_response(user_input):
-    user_embedding = model.encode(user_input, convert_to_tensor=True)
-    cosine_scores = util.pytorch_cos_sim(user_embedding, question_embeddings)
-    top_result = torch.argmax(cosine_scores)
+chatbot = Chat(patterns, reflections)
+session = {"order_mode": False, "step": 0}
 
-    if cosine_scores[0][top_result] > 0.6:
-        return faq_pairs[questions[top_result]]
-    else:
-        return "I'm sorry, I didn't understand that. Could you please rephrase?"
+def step_0(message):
+    if message not in books:
+        return "Category not found 404"
+    session["step"] = 1
+    return f"You selected {message} category. We have {', '.join(books[message])} books for this category. Which one would you like to buy? You can also type 'nothing' if you would like to exit"
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
+def step_1(message):
+    if message == 'nothing':
+        session["order_mode"] = False
+        session["step"] = 0
+        return "Thank you for chatting"
+    session["step"] = 2
+    return f"{message} added to cart. Cost is Rs.500. Should I confirm the order? (yes/no)"
 
-st.title("🧠 NLP Chatbot ")
+def step_2(message):
+    session["order_mode"] = False
+    session["step"] = 0
+    return "Order confirmed. Will reach soon." if message == 'yes' else "No worries! Come back later."
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
+step_functions = {
+    0: step_0,
+    1: step_1,
+    2: step_2
+}
 
-user_input = st.chat_input("Ask a question...")
+def respond(message, history):
+    message = message.strip().lower()
 
-if user_input:
-    st.session_state.messages.append({"role": "user", "content": user_input})
-    with st.chat_message("user"):
-        st.markdown(user_input)
+    if session["order_mode"]:
+        return step_functions[session["step"]](message)
 
-    response = get_response(user_input)
-    st.session_state.messages.append({"role": "assistant", "content": response})
-    with st.chat_message("assistant"):
-        st.markdown(response)
+    if "start order" in message or r"(.*)start(.*)":
+        session["order_mode"] = True
+        session["step"] = 0
+        return "Ok let's start. Which category book (fiction/non-fiction/academic)?"
+    
+    reply = chatbot.respond(message)
+    return reply if reply else "Sorry. I love you."
+
+demo = gr.ChatInterface(
+    fn=respond,
+    title="📚 BookWorld Chatbot",
+    description="Ask me about books, prices, or place an order!",
+    theme="soft"
+)
+
+demo.launch()
